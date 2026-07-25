@@ -1,5 +1,6 @@
 import struct
 import sys
+import socket
 
 
 
@@ -12,11 +13,13 @@ class Packet_header:
         self.orig_len = orig_len
 
 class IPV4_header:
-    def __init__(self, ttl, protocol, flags, frag_offset, src_ip, dst_ip):
-        self.ttl = ttl
+    def __init__(self, header, protocol, flags, frag_offset, dst_ip, src_ip):
+        self.header = header
         self.protocol = protocol
         self.flags = flags
         self.frag_offset = frag_offset
+        self.dst_ip = dst_ip
+        self.src_ip = src_ip
         pass
 
 # Define structures for global header and packet header
@@ -26,6 +29,8 @@ def read_pcap(file_path):
         global_header_data = f.read(24)
         # Read packets
         packets = {}
+        destination_ip_found = False
+        destination_ip = None
         while True:
             packet_number = 0
             packet_header_data = f.read(16)
@@ -41,9 +46,17 @@ def read_pcap(file_path):
 
 
             packets[packet_number]=((packet_header, packet_data))
-            ip_header = packet_data[14:34]
+            ip_header, protocol, flags, fragment_offset, dst_ip, src_ip = read_IPv4_header(packet_data)
+            ip = IPV4_header(ip_header, protocol, flags, fragment_offset, dst_ip, src_ip)
+            while destination_ip_found == False:
 
-
+                if ip.protocol == 17:
+                    print("UDP Packet Found")
+                    destination_ip = ip.dst_ip
+                    src_ip = ip.src_ip
+                    #print(f"Source IP: {socket.inet_ntoa(src_ip)}")
+                    #print(f"Destination IP: {socket.inet_ntoa(destination_ip)}")
+                    destination_ip_found = True
             packet_number += 1
             #print(f"\nPacket Header: {packet_header}")
             #print(f"Packet Data: {packet_data.hex()}")
@@ -52,19 +65,32 @@ def read_pcap(file_path):
 def read_IPv4_header(packet_data):
     # Unpack the IPv4 header fields
     version_ihl = packet_data[0]
-    ttl = packet_data[8]
-    protocol = packet_data[9]
-    flags_frag_offset = struct.unpack('!H', packet_data[6:8])[0]
-    flags = (flags_frag_offset >> 13) & 0x07
-    frag_offset = flags_frag_offset & 0x1FFF
-    src_ip = struct.unpack('!BBBB', packet_data[12:16])
-    dst_ip = struct.unpack('!BBBB', packet_data[16:20])
+    ip_header = packet_data[14:34]
+    # Bytes 6-7 of IP header contain flags and fragment offset
+    flags_offset_bytes = ip_header[6:8]
+
+    # Convert to 16-bit integer (big-endian)
+    flags_offset_value = int.from_bytes(flags_offset_bytes, byteorder='big')
+
+    # Extract individual components:
+    # Flags are the top 3 bits
+    flags = (flags_offset_value >> 13) & 0x7  # Shift right 13, mask 3 bits
+
+    # Fragment offset is the bottom 13 bits
+    fragment_offset = flags_offset_value & 0x1FFF  # Mask 13 bits
+
+    # Break down the flags further:
+    reserved_bit = (flags >> 2) & 0x1      # Bit 0 (always 0)
+    dont_fragment = (flags >> 1) & 0x1     # Bit 1 (DF flag)
+    more_fragments = flags & 0x1           # Bit 2 (MF flag)
+    protocol = ip_header[9]
+    src_ip = ip_header[12:16]
+    dst_ip = ip_header[16:20]
+
     
-    ipv4_header = IPV4_header(ttl, protocol, flags, frag_offset, src_ip, dst_ip)
+    #print(f"IPv4 Header: {ip_header}")
     
-    print(f"IPv4 Header: {ipv4_header}")
-    
-    return ipv4_header
+    return (ip_header, protocol, flags, fragment_offset, dst_ip, src_ip)
 
 # analyzer.py
 
