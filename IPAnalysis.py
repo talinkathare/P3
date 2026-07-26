@@ -32,6 +32,7 @@ def read_pcap(file_path):
         destination_ip_found = False
         destination_ip = None
         while True:
+            #print("line 35")
             packet_number = 0
             packet_header_data = f.read(16)
             if len(packet_header_data) < 16:
@@ -42,21 +43,31 @@ def read_pcap(file_path):
 
             packet_header = Packet_header(ts_sec, ts_usec, incl_len, orig_len)
             packet_data = f.read(packet_header.incl_len)
-            
-
 
             packets[packet_number]=((packet_header, packet_data))
             ip_header, protocol, flags, fragment_offset, dst_ip, src_ip = read_IPv4_header(packet_data)
             ip = IPV4_header(ip_header, protocol, flags, fragment_offset, dst_ip, src_ip)
-            while destination_ip_found == False:
+            if destination_ip_found == False:
+                #print("stuck line 53")
 
                 if ip.protocol == 17:
                     print("UDP Packet Found")
                     destination_ip = ip.dst_ip
                     src_ip = ip.src_ip
-                    #print(f"Source IP: {socket.inet_ntoa(src_ip)}")
-                    #print(f"Destination IP: {socket.inet_ntoa(destination_ip)}")
+                    print(f"Source IP: {socket.inet_ntoa(src_ip)}")
+                    print(f"Destination IP: {socket.inet_ntoa(destination_ip)}")
                     destination_ip_found = True
+
+                if ip.protocol == 1:
+                    print("ICMP Packet Found")
+                    icmp_type = packet_data[34]
+                    if icmp_type == 11:
+                        original_ip_header = packet_data[36:56]
+                        original_ttl = original_ip_header[8]
+            
+
+
+
             packet_number += 1
             #print(f"\nPacket Header: {packet_header}")
             #print(f"Packet Data: {packet_data.hex()}")
